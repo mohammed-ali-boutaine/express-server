@@ -3,7 +3,12 @@ import prisma from "../prisma";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
-import { createJWT, hashPassword } from "../utils/auth";
+import { hashPassword } from "../utils/auth";
+import {
+  createSession,
+  invalidateSession,
+  invalidateAllUserSessions,
+} from "../utils/session";
 import { registerSchema, loginSchema } from "../validation/auth.schema";
 
 import authConfig from "../config/auth.config";
@@ -42,13 +47,12 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       data: { email, name, password: hashed },
     });
 
-    // create access token and refresh token
-    const tokens = createJWT(user.id);
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken: tokens.refreshToken },
-    });
+    // Create a new session with access and refresh tokens
+    const { session, tokens } = await createSession(
+      user.id,
+      req.headers["user-agent"] || null,
+      req.ip || null
+    );
 
     // Set cookies
 
@@ -95,14 +99,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // create access token and refersh token based on user id
-    const tokens = createJWT(user.id);
-
-    // Store the refresh token in the database
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken: tokens.refreshToken },
-    });
+    // Create a new session with access and refresh tokens
+    const { tokens } = await createSession(
+      user.id,
+      req.headers["user-agent"] || null,
+      req.ip || null
+    );
 
     // Set cookies
 
@@ -147,27 +149,38 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
     try {
       // Verify refresh token
       const decoded = jwt.verify(token, authConfig.refresh_secret) as {
-        id: number;
+        userId: number;
       };
 
-      // Ensure refresh token matches DB (rotation security)
-      const user = await prisma.user.findUnique({ where: { id: decoded.id } });
-      if (!user || user.refreshToken !== token) {
+      // Find the session with this refresh token using our utility
+      const session = await prisma.session.findUnique({
+        where: { refreshToken: token },
+      });
+
+      // Check if session exists, is valid and belongs to the decoded user
+      if (!session || !session.isValid || session.userId !== decoded.userId) {
         res.status(403).json({ message: "Invalid refresh token" });
         return;
       }
 
       // Create new access token
-      const newAccessToken = jwt.sign({ id: user.id }, authConfig.secret, {
-        expiresIn: "15m",
-      });
+      const newAccessToken = jwt.sign(
+        { userId: session.userId },
+        authConfig.secret,
+        {
+          expiresIn: "15m",
+        }
+      );
       res.cookie(
         "accessToken",
         newAccessToken,
-        getCookieOptions(15 * 60 * 1000)
+        getCookieOptions(15 * 60 * 1000) // 15min
       );
 
-      res.json({ message: "Access token refreshed" });
+      res.json({
+        message: "Access token refreshed",
+        sessionId: session.id,
+      });
       return;
     } catch (error) {
       res.status(403).json({ message: "Invalid or expired refresh token" });
@@ -187,13 +200,18 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
  *   */
 export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
+    const refreshToken = req.cookies.refreshToken;
     const userId = req.user?.id;
-    if (userId) {
-      await prisma.user.update({
-        where: { id: parseInt(userId) },
-        data: { refreshToken: null }, // Clear the refresh token from the database
-      });
+    const sessionId = req.user?.sessionId;
+
+    if (refreshToken && sessionId) {
+      // Invalidate the specific session for this refresh token
+      await invalidateSession(sessionId);
+    } else if (userId) {
+      // If no session ID but we have a userId, invalidate all sessions for this user
+      await invalidateAllUserSessions(parseInt(userId));
     }
+
     res.clearCookie("accessToken");
     res.clearCookie("refreshToken");
     res.json({ message: "Logged out successfully." });

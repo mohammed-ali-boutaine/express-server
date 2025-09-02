@@ -1,11 +1,3 @@
-
-/*
-Why These Configurations Matter?
-Security: Sensitive data like database URLs and JWT secrets are stored securely in .env
-Flexibility: Environment variables make it easy to switch configurations between development, testing, and production environments.
-Scalability: Centralized configuration files like app.config.ts and auth.config.ts simplify updates and maintenance.
-*/
-
 const authConfig = {
     // Secret key used for signing JWT access tokens
     secret: process.env.JWT_SECRET as string, 
