@@ -2,6 +2,44 @@
 
 A production-ready RESTful API starter template built with Express, TypeScript, and Prisma. Features robust authentication with JWT tokens, session management, and CRUD operations for users and blog posts.
 
+
+## Authentication Flow
+
+### Registration & Login
+
+```mermaid
+sequenceDiagram
+    Client->>+Server: POST /api/auth/register (email, password, name)
+    Server->>+Database: Create new user (password hashed)
+    Database-->>-Server: User created
+    Server->>+Database: Create new session
+    Database-->>-Server: Session created
+    Server-->>-Client: 201 Created, Set Cookies (access + refresh tokens)
+
+    Client->>+Server: POST /api/auth/login (email, password)
+    Server->>+Database: Verify credentials
+    Database-->>-Server: Valid user
+    Server->>+Database: Create new session
+    Database-->>-Server: Session created
+    Server-->>-Client: 200 OK, Set Cookies (access + refresh tokens)
+```
+
+### Token Refresh & Logout
+
+```mermaid
+sequenceDiagram
+    Client->>+Server: POST /api/auth/refresh (with refresh token cookie)
+    Server->>+Database: Verify refresh token & session
+    Database-->>-Server: Valid session
+    Server-->>-Client: 200 OK, New access + refresh tokens
+
+    Client->>+Server: POST /api/auth/logout (with refresh token)
+    Server->>+Database: Invalidate session
+    Database-->>-Server: Session invalidated
+    Server-->>-Client: 200 OK, Clear token cookies
+```
+
+
 ## Features
 
 ### Core Technologies
@@ -188,42 +226,6 @@ This template implements multiple security best practices:
 - **Session Management**: Users can view and revoke active sessions
 - **Token Refresh**: Secure token refresh process without re-authentication
 - **Permission Checks**: Users can only modify their own resources (blogs/sessions)
-
-## Authentication Flow
-
-### Registration & Login
-
-```mermaid
-sequenceDiagram
-    Client->>+Server: POST /api/auth/register (email, password, name)
-    Server->>+Database: Create new user (password hashed)
-    Database-->>-Server: User created
-    Server->>+Database: Create new session
-    Database-->>-Server: Session created
-    Server-->>-Client: 201 Created, Set Cookies (access + refresh tokens)
-
-    Client->>+Server: POST /api/auth/login (email, password)
-    Server->>+Database: Verify credentials
-    Database-->>-Server: Valid user
-    Server->>+Database: Create new session
-    Database-->>-Server: Session created
-    Server-->>-Client: 200 OK, Set Cookies (access + refresh tokens)
-```
-
-### Token Refresh & Logout
-
-```mermaid
-sequenceDiagram
-    Client->>+Server: POST /api/auth/refresh (with refresh token cookie)
-    Server->>+Database: Verify refresh token & session
-    Database-->>-Server: Valid session
-    Server-->>-Client: 200 OK, New access + refresh tokens
-
-    Client->>+Server: POST /api/auth/logout (with refresh token)
-    Server->>+Database: Invalidate session
-    Database-->>-Server: Session invalidated
-    Server-->>-Client: 200 OK, Clear token cookies
-```
 
 ## Data Models
 
